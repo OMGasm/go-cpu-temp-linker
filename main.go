@@ -57,7 +57,6 @@ func main() {
 			continue
 		}
 		dev_path := filepath.Join(hw_dir, dirmon.Name())
-		println(dirmon.Name())
 		name_file, err := os.Open(filepath.Join(dev_path, "name"))
 		if err != nil {
 			perr("can't read device name?", err)
@@ -77,20 +76,22 @@ func main() {
 			if err != nil {
 				perr("i don't evne know", err)
 			}
-			for _, label := range labels {
-				fmt.Println(name, label)
-				label_s, err := read_hwmon_file(filepath.Join(dev_path, "label"))
+			for _, label_path := range labels {
+				label, err := read_hwmon_file(filepath.Join(dev_path, label_path))
 				if err != nil {
 					perr("Failed to read probe label", err)
 					continue
 				}
-				fmt.Println(label_s)
 
-				tinput := strings.TrimSuffix(label, "_label")
+				if label != cfg.Cpu_input_label {
+					continue
+				}
+
+				tinput := strings.TrimSuffix(label_path, "_label")
 
 				path := filepath.Join(dev_path, tinput+"_input")
-				fmt.Println(tinput)
-				fmt.Println(path)
+
+				fmt.Printf("Found probe [%s/%s] at %s\n", name, label, path)
 
 				err = create_hwmon_symlink(path, "temp_input")
 				if err != nil {
@@ -98,15 +99,14 @@ func main() {
 					return
 				}
 
-				temp, err := read_hwmon_file("temp_input")
+				_, err = read_hwmon_file("temp_input")
 				if err != nil {
 					perr("Failed to read probe symlink", err)
 					return
 				}
-				fmt.Println(temp)
+				fmt.Printf("Symlinked probe to %s\n", "temp_input")
 			}
 		}
-		fmt.Println()
 	}
 }
 
@@ -122,6 +122,7 @@ func create_hwmon_symlink(target_path string, link_path string) error {
 
 func read_hwmon_file(path string) (string, error) {
 	file, err := os.Open(path)
+	defer file.Close()
 	if err != nil {
 		return "", nil
 	}
