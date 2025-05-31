@@ -46,68 +46,128 @@ func main() {
 	}
 
 	hw_dir := "/sys/class/hwmon"
-	dirs, err := os.ReadDir(hw_dir)
+	devices, err := enumerate_sensors(hw_dir)
 	if err != nil {
-		perr("can't read hwmon?", err)
+		perr("can't enumerate hwmon?", err)
 		return
 	}
-	for _, dirmon := range dirs {
-		info, _ := dirmon.Info()
-		if info.Mode()&fs.ModeSymlink == 0 {
-			continue
-		}
-		dev_path := filepath.Join(hw_dir, dirmon.Name())
-		name_file, err := os.Open(filepath.Join(dev_path, "name"))
-		if err != nil {
-			perr("can't read device name?", err)
-		}
-		var name_bytes [64]byte
-		size, err := name_file.Read(name_bytes[:])
-		if err != nil {
-			perr("can't read device name?", err)
-		}
-		name_file.Close()
-		name := string(name_bytes[:size])
-		name = strings.TrimSpace(name)
 
-		if name == cfg.Cpu_sensor {
-			dev_fs := os.DirFS(dev_path)
-			labels, err := fs.Glob(dev_fs, "temp*_label")
-			if err != nil {
-				perr("i don't evne know", err)
+	var device *Sensor
+	for dev := range devices {
+		if dev.Name == cfg.Cpu_sensor {
+			device = &dev
+			break
+		}
+	}
+	if device == nil {
+		fmt.Printf("Unable to find hwmon device for %s\n", cfg.Cpu_sensor)
+		return
+	}
+
+	probes, err := enumerate_probes(device)
+	if err != nil {
+		perr("Error enumerating probes", err)
+	}
+	var probe *Probe
+	for p := range probes {
+		if p.Label == cfg.Cpu_input_label {
+			probe = &p
+			break
+		}
+	}
+	if probe == nil {
+		fmt.Printf("Unable to find probe for %s in %s", cfg.Cpu_input_label, cfg.Cpu_sensor)
+		return
+	}
+
+	err = create_hwmon_symlink(filepath.Join(device.Path, probe.Input), "temp_input")
+	if err != nil {
+		perr("Error creating symlink", err)
+		return
+	}
+	_, err = read_hwmon_file("temp_input")
+	if err != nil {
+		perr("Error reading temp from symlink", err)
+		return
+	}
+}
+
+type Sensor struct {
+	Path string
+	Name string
+}
+
+type Probe struct {
+	Label string
+	Input string
+}
+
+func enumerate_sensors(hw_path string) (func(func(Sensor) bool), error) {
+	hwmon_dirs, err := os.ReadDir(hw_path)
+	if err != nil {
+		return nil, err
+	}
+
+	iter := func(yield func(Sensor) bool) {
+		for _, hw_dir := range hwmon_dirs {
+			info, _ := hw_dir.Info()
+			// afaik all hwmon dirs are symlinks
+			// skip anything else; could be wrong
+			if info.Mode()&fs.ModeSymlink == 0 {
+				continue
 			}
-			for _, label_path := range labels {
-				label, err := read_hwmon_file(filepath.Join(dev_path, label_path))
-				if err != nil {
-					perr("Failed to read probe label", err)
-					continue
-				}
 
-				if label != cfg.Cpu_input_label {
-					continue
-				}
+			hwmon_path := filepath.Join(hw_path, hw_dir.Name())
+			name_path := filepath.Join(hwmon_path, "name")
+			name, err := read_hwmon_file(name_path)
+			if err != nil {
+				// I don't think this should be able to happen?
+				perr("Could not read hwmon device name", err)
+				return
+			}
 
-				tinput := strings.TrimSuffix(label_path, "_label")
+			dev := Sensor{
+				Path: hwmon_path,
+				Name: name,
+			}
 
-				path := filepath.Join(dev_path, tinput+"_input")
-
-				fmt.Printf("Found probe [%s/%s] at %s\n", name, label, path)
-
-				err = create_hwmon_symlink(path, "temp_input")
-				if err != nil {
-					perr("Failed to create probe symlink", err)
-					return
-				}
-
-				_, err = read_hwmon_file("temp_input")
-				if err != nil {
-					perr("Failed to read probe symlink", err)
-					return
-				}
-				fmt.Printf("Symlinked probe to %s\n", "temp_input")
+			if !yield(dev) {
+				break
 			}
 		}
 	}
+	return iter, nil
+}
+
+func enumerate_probes(sensor *Sensor) (func(func(Probe) bool), error) {
+	dev_fs := os.DirFS(sensor.Path)
+	labels, err := fs.Glob(dev_fs, "temp*_label")
+	if err != nil {
+		perr("i don't evne know", err)
+	}
+
+	iter := func(yield func(Probe) bool) {
+
+		for _, label_path := range labels {
+			label, err := read_hwmon_file(filepath.Join(sensor.Path, label_path))
+			if err != nil {
+				//Probably also should not be able to happen
+				perr("Could not read probe label", err)
+			}
+			input := strings.TrimSuffix(label_path, "_label")
+			input = input + "_input"
+
+			probe := Probe{
+				Label: label,
+				Input: input,
+			}
+
+			if !yield(probe) {
+				break
+			}
+		}
+	}
+	return iter, nil
 }
 
 func create_hwmon_symlink(target_path string, link_path string) error {
