@@ -22,7 +22,7 @@ func main() {
 	}
 
 	hw_dir := "/sys/class/hwmon"
-	devices, err := Enumerate_sensors(hw_dir)
+	devices, err := Enumerate_sensors(hw_dir, cfg.Resolve_temp_hw_path)
 	if err != nil {
 		perr("can't enumerate hwmon?", err)
 		return

@@ -18,7 +18,7 @@ type Probe struct {
 	Input string
 }
 
-func Enumerate_sensors(hw_path string) (func(func(Sensor) bool), error) {
+func Enumerate_sensors(hw_path string, resolve_hwmon_path bool) (func(func(Sensor) bool), error) {
 	hwmon_dirs, err := os.ReadDir(hw_path)
 	if err != nil {
 		return nil, err
@@ -34,7 +34,18 @@ func Enumerate_sensors(hw_path string) (func(func(Sensor) bool), error) {
 			}
 
 			hwmon_path := filepath.Join(hw_path, hw_dir.Name())
+			if resolve_hwmon_path {
+				hwmon_path, err = os.Readlink(hwmon_path)
+				if err != nil {
+					perr("??", err)
+					break
+				}
+				if !filepath.IsAbs(hwmon_path) {
+					hwmon_path = filepath.Join(hw_path, hwmon_path)
+				}
+			}
 			name_path := filepath.Join(hwmon_path, "name")
+
 			name, err := Read_hwmon_file(name_path)
 			if err != nil {
 				// I don't think this should be able to happen?

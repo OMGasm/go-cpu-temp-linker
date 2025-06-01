@@ -6,8 +6,9 @@ import (
 )
 
 type Config struct {
-	Cpu_sensor      string
-	Cpu_input_label string
+	Cpu_sensor           string
+	Cpu_input_label      string
+	Resolve_temp_hw_path bool
 }
 
 func Read_config() (*Config, error) {
@@ -25,7 +26,8 @@ func Read_config() (*Config, error) {
 
 func Default_Config() *Config {
 	return &Config{
-		Cpu_sensor:      "k10temp",
-		Cpu_input_label: "Tctl",
+		Cpu_sensor:           "k10temp",
+		Cpu_input_label:      "Tctl",
+		Resolve_temp_hw_path: false,
 	}
 }
