@@ -56,12 +56,12 @@ func main() {
 		return
 	}
 
-	err = Create_hwmon_symlink(filepath.Join(device.Path, probe.Input), "temp_input")
+	err = Create_hwmon_symlink(filepath.Join(device.Path, probe.Input), cfg.Link_path)
 	if err != nil {
 		perr("Error creating symlink", err)
 		return
 	}
-	_, err = Read_hwmon_file("temp_input")
+	_, err = Read_hwmon_file(cfg.Link_path)
 	if err != nil {
 		perr("Error reading temp from symlink", err)
 		return
