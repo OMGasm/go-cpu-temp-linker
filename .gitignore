@@ -1,3 +1,6 @@
 /temp_input
 /go-cpu-temp-linker
 /config.json
+/.direnv/
+/.envrc
+
